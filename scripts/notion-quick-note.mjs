@@ -70,11 +70,14 @@ async function main() {
   const title = String(args.title || "").trim();
   if (!title) throw new Error("Missing --title for Notion note.");
 
-  if (!fs.existsSync(DEFAULT_KEY_PATH)) {
-    throw new Error(`Missing Notion API key at ${DEFAULT_KEY_PATH}`);
+  // Check environment variable first (for Railway), then file (for local dev)
+  let key = process.env.NOTION_API_KEY || "";
+  if (!key && fs.existsSync(DEFAULT_KEY_PATH)) {
+    key = fs.readFileSync(DEFAULT_KEY_PATH, "utf8").trim();
   }
-  const key = fs.readFileSync(DEFAULT_KEY_PATH, "utf8").trim();
-  if (!key) throw new Error("Notion API key is empty.");
+  if (!key) {
+    throw new Error("Missing Notion API key (check NOTION_API_KEY env or ~/.config/notion/api_key)");
+  }
 
   const env = parseEnvFile(DEFAULT_ENV_FILE);
   let pageId = env.NOTION_PAGE_ID;
