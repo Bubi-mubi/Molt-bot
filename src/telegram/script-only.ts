@@ -784,6 +784,12 @@ export async function handleTelegramScriptOnlyMessage(params: {
     return { handled: true };
   }
 
+  // In Smart Mode, bypass all script triggers and let AI handle the message.
+  // We only reached here if no 'pending' flow was active.
+  if (smartEnabled) {
+    return { handled: false };
+  }
+
   const rel = parseReminderRelative(text);
   if (rel) {
     if (!rel.text) {
@@ -990,9 +996,7 @@ export async function handleTelegramScriptOnlyMessage(params: {
     return { handled: true };
   }
 
-  if (smartEnabled) {
-    return { handled: false };
-  }
+
 
   await send(buildHelpText());
   return { handled: true };
