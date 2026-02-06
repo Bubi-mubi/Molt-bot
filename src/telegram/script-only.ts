@@ -17,7 +17,7 @@ import type { TelegramAccountConfig } from "../config/types.telegram.js";
 import { deliverReplies } from "./bot/delivery.js";
 import type { RuntimeEnv } from "../runtime.js";
 
-const REPO_CWD = "/Users/lyrra/MyAPPS/moltbot-2026.1.24";
+const REPO_CWD = process.cwd();
 const CLICKUP_SCRIPT = path.join(REPO_CWD, "scripts", "clickup-telegram-reminder.mjs");
 const NOTION_SCRIPT = path.join(REPO_CWD, "scripts", "notion-quick-note.mjs");
 const REMINDERS_SCRIPT = path.join(REPO_CWD, "scripts", "telegram-reminders.mjs");
