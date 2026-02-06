@@ -62,8 +62,7 @@ apps/ios/*.mobileprovision
 # Local untracked files
 .local/
 .vscode/
-IDENTITY.md
-USER.md
+# Note: IDENTITY.md and USER.md in docs/reference/templates/ ARE tracked (needed for gateway)
 .tgz
 
 # local tooling
