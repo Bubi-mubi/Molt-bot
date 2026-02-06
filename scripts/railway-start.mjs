@@ -20,17 +20,46 @@ const writeConfigFromEnv = () => {
   const raw = rawB64
     ? Buffer.from(rawB64, "base64").toString("utf8")
     : process.env.CLAWDBOT_CONFIG_JSON?.trim();
-  if (!raw) return null;
 
   const stateDir = resolveStateDir();
   const configPath = resolveConfigPath(stateDir);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
+  // Check for Telegram token from environment
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+
+  // If no config JSON provided but we have a Telegram token, create minimal config
+  if (!raw) {
+    if (telegramToken) {
+      const minimalConfig = {
+        gateway: { mode: "local" },
+        channels: {
+          telegram: { enabled: true }
+        }
+      };
+      fs.writeFileSync(configPath, JSON.stringify(minimalConfig, null, 2));
+      return configPath;
+    }
+    return null;
+  }
+
   let payload = raw;
   try {
     const parsed = JSON.parse(raw);
+    // Ensure gateway.mode is set to local for Railway deployment
     if (!parsed.gateway) parsed.gateway = {};
-    if (!parsed.gateway.mode) parsed.gateway.mode = "local";
+    parsed.gateway.mode = "local";
+
+    // Auto-enable Telegram channel if botToken is configured (env or config)
+    if (parsed.channels?.telegram || telegramToken) {
+      if (!parsed.channels) parsed.channels = {};
+      if (!parsed.channels.telegram) parsed.channels.telegram = {};
+      // Only set enabled if not explicitly set to false
+      if (parsed.channels.telegram.enabled !== false) {
+        parsed.channels.telegram.enabled = true;
+      }
+    }
+
     payload = JSON.stringify(parsed, null, 2);
   } catch {
     // Leave payload as-is (may be JSON5). We won't force gateway.mode in that case.
