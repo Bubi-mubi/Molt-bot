@@ -71,6 +71,26 @@ const writeConfigFromEnv = () => {
 
 const port = Number(process.env.PORT || 18789);
 const gatewayToken = process.env.CLAWDBOT_GATEWAY_TOKEN || "railway-gateway-token";
+
+// Setup Notion
+const notionKey = process.env.NOTION_KEY?.trim();
+if (notionKey) {
+  const notionConfigDir = path.join(os.homedir(), ".config", "notion");
+  fs.mkdirSync(notionConfigDir, { recursive: true });
+  fs.writeFileSync(path.join(notionConfigDir, "api_key"), notionKey);
+}
+
+const notionEnvPath = path.join(os.homedir(), ".clawdbot", "notion.env");
+const notionPageId = process.env.NOTION_PAGE_ID?.trim();
+const notionDbId = process.env.NOTION_DATABASE_ID?.trim();
+if (notionPageId || notionDbId) {
+  fs.mkdirSync(path.dirname(notionEnvPath), { recursive: true });
+  let content = "";
+  if (notionPageId) content += `NOTION_PAGE_ID=${notionPageId}\n`;
+  if (notionDbId) content += `NOTION_DATABASE_ID=${notionDbId}\n`;
+  fs.writeFileSync(notionEnvPath, content);
+}
+
 writeConfigFromEnv();
 const args = [
   "scripts/run-node.mjs",

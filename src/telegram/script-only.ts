@@ -379,7 +379,10 @@ export async function handleTelegramScriptOnlyMessage(params: {
 
   const isAudio =
     params.mediaPaths.length > 0 &&
-    params.mediaTypes.some((t) => String(t || "").toLowerCase().startsWith("audio/"));
+    params.mediaTypes.some((t) => {
+      const type = String(t || "").toLowerCase();
+      return type.startsWith("audio/") || type.startsWith("voice/");
+    });
 
   if (!text && isAudio) {
     const audioPath = params.mediaPaths[0];

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const OPENAI_URL = "https://api.openai.com/v1/audio/transcriptions";
-const DEFAULT_MODEL = "gpt-4o-mini-transcribe";
+const DEFAULT_MODEL = "whisper-1";
 
 function parseArgs(argv) {
   const args = { file: "", model: "" };
