@@ -106,6 +106,22 @@ const args = [
   "--allow-unconfigured",
 ];
 
+// Start background ticker for reminders
+const REMINDERS_SCRIPT = path.join(process.cwd(), "scripts", "telegram-reminders.mjs");
+console.log(`[railway-start] Starting reminder ticker loop for ${REMINDERS_SCRIPT}`);
+setInterval(() => {
+  const now = new Date();
+  if (now.getSeconds() < 5) {
+    // Run mostly on the minute
+    const tick = spawn(process.execPath, [REMINDERS_SCRIPT, "--mode", "tick"], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "ignore", "inherit"] // log errors to stderr
+    });
+    tick.on("error", (err) => console.error(`[ticker] failed to spawn: ${err}`));
+  }
+}, 5000); // Check every 5s, run if seconds < 5 (approx once per min)
+
 const child = spawn(process.execPath, args, {
   cwd: process.cwd(),
   env: process.env,
