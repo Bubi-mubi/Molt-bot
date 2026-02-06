@@ -70,15 +70,18 @@ const writeConfigFromEnv = () => {
 };
 
 const port = Number(process.env.PORT || 18789);
+const gatewayToken = process.env.CLAWDBOT_GATEWAY_TOKEN || "railway-gateway-token";
 writeConfigFromEnv();
 const args = [
   "scripts/run-node.mjs",
   "gateway",
   "run",
   "--bind",
-  "0.0.0.0",
+  "lan",
   "--port",
   String(port),
+  "--token",
+  gatewayToken,
   "--force",
   "--allow-unconfigured",
 ];
