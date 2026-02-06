@@ -33,15 +33,17 @@ type ScriptState = {
     {
       smart?: boolean;
       pending?:
-        | { type: "note-destination"; title: string; body?: string }
-        | { type: "note-target"; title: string; due?: string; origin?: "voice" | "text" }
-        | { type: "note-due"; title: string; targetKey?: string; origin?: "voice" | "text" }
-        | { type: "clickup-title"; assignee?: string; list?: string }
-        | { type: "clickup-list"; title: string; assignee?: string }
-        | { type: "daily-plan"; text?: string; date?: string }
-        | { type: "reminder-text"; when: { kind: "in" | "at"; value: string } }
-        | { type: "reminder-time"; text: string }
-        | null;
+      | { type: "note-destination"; title: string; body?: string }
+      | { type: "note-target"; title: string; due?: string; origin?: "voice" | "text" }
+      | { type: "note-due"; title: string; targetKey?: string; origin?: "voice" | "text" }
+      | { type: "note-reminder-ask"; title: string; targetKey: string; due?: string }
+      | { type: "note-reminder-time"; title: string; targetKey: string; due?: string }
+      | { type: "clickup-title"; assignee?: string; list?: string }
+      | { type: "clickup-list"; title: string; assignee?: string }
+      | { type: "daily-plan"; text?: string; date?: string }
+      | { type: "reminder-text"; when: { kind: "in" | "at"; value: string } }
+      | { type: "reminder-time"; text: string }
+      | null;
     }
   >;
 };
@@ -126,6 +128,29 @@ function buildNotionTargetsKeyboard(targets: Record<string, { name?: string }>) 
     );
   }
   return rows;
+}
+
+function buildReminderAskKeyboard() {
+  return [
+    [
+      { text: "✅ Да", callback_data: "/reminder-ask yes" },
+      { text: "❌ Не", callback_data: "/reminder-ask no" },
+    ],
+  ];
+}
+
+function buildReminderTimeKeyboard() {
+  return [
+    [
+      { text: "30 мин", callback_data: "/reminder-time 30m" },
+      { text: "1 час", callback_data: "/reminder-time 1h" },
+      { text: "2 часа", callback_data: "/reminder-time 2h" },
+    ],
+    [
+      { text: "Утре 09:00", callback_data: "/reminder-time tomorrow-9" },
+      { text: "Утре 18:00", callback_data: "/reminder-time tomorrow-18" },
+    ],
+  ];
 }
 
 function parseDueText(text: string) {
@@ -466,30 +491,110 @@ export async function handleTelegramScriptOnlyMessage(params: {
         await send("Моля, избери цел от бутоните по‑долу.");
         return { handled: true };
       }
-      if (pending.due) {
-        const normalizedDue = normalizeDueToNotionFormat(pending.due);
-        const result = runNodeScript(NOTION_SCRIPT, [
-          "--target",
-          targetKey,
-          "--title",
-          pending.title,
-          "--body",
-          `До ${normalizedDue || pending.due}`,
-        ]);
+      // Transition to reminder ask flow
+      entry.pending = { type: "note-reminder-ask", title: pending.title, targetKey, due: pending.due };
+      state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
+      saveState(state);
+      const keyboard = buildReminderAskKeyboard();
+      await send("Искаш ли да ти напомня за тази задача?", { inline_keyboard: keyboard });
+      return { handled: true };
+    }
+
+    if (pending.type === "note-reminder-ask") {
+      const response = text.replace(/^\/reminder-ask\s+/i, "").trim().toLowerCase();
+      if (response === "yes" || response === "да") {
+        entry.pending = { type: "note-reminder-time", title: pending.title, targetKey: pending.targetKey, due: pending.due };
+        state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
+        saveState(state);
+        const keyboard = buildReminderTimeKeyboard();
+        await send("Кога да ти напомня?", { inline_keyboard: keyboard });
+        return { handled: true };
+      }
+      // No reminder - save directly
+      const result = runNodeScript(NOTION_SCRIPT, [
+        "--target",
+        pending.targetKey,
+        "--title",
+        pending.title,
+        ...(pending.due ? ["--body", `До ${normalizeDueToNotionFormat(pending.due)}`] : []),
+      ]);
+      entry.pending = null;
+      state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
+      saveState(state);
+      if (result.status !== 0) {
+        await send(`Грешка при Notion: ${result.stderr || result.stdout}`.trim());
+        return { handled: true };
+      }
+      await send(result.stdout || "Записах задачата в Notion (без напомняне).");
+      return { handled: true };
+    }
+
+    if (pending.type === "note-reminder-time") {
+      let reminderTime = text.replace(/^\/reminder-time\s+/i, "").trim();
+      // Parse button callbacks or free text
+      const now = new Date();
+      let reminderWhen = "";
+      if (reminderTime === "30m") {
+        reminderWhen = "30m";
+      } else if (reminderTime === "1h") {
+        reminderWhen = "1h";
+      } else if (reminderTime === "2h") {
+        reminderWhen = "2h";
+      } else if (reminderTime === "tomorrow-9") {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        const dateStr = tomorrow.toISOString().slice(0, 10);
+        reminderWhen = `${dateStr} 09:00`;
+      } else if (reminderTime === "tomorrow-18") {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        const dateStr = tomorrow.toISOString().slice(0, 10);
+        reminderWhen = `${dateStr} 18:00`;
+      } else {
+        // Try to parse free text time
+        const absoluteMatch = reminderTime.match(/(\d{1,2}:\d{2}|\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
+        const relativeMatch = reminderTime.match(/(\d+)\s*(мин(?:ути)?|м|min|час(?:а)?|h|hrs?|hour|hours)/i);
+        if (absoluteMatch) {
+          reminderWhen = absoluteMatch[1];
+        } else if (relativeMatch) {
+          const value = Number(relativeMatch[1]);
+          const unit = relativeMatch[2].toLowerCase();
+          const suffix = unit.startsWith("ч") || unit.startsWith("h") ? "h" : "m";
+          reminderWhen = `${value}${suffix}`;
+        } else {
+          await send("Не разпознах времето. Избери от бутоните или напиши напр. '30 мин' или '18:30'.");
+          return { handled: true };
+        }
+      }
+      // Save to Notion
+      const result = runNodeScript(NOTION_SCRIPT, [
+        "--target",
+        pending.targetKey,
+        "--title",
+        pending.title,
+        ...(pending.due ? ["--body", `До ${normalizeDueToNotionFormat(pending.due)}`] : []),
+      ]);
+      if (result.status !== 0) {
         entry.pending = null;
         state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
         saveState(state);
-        if (result.status !== 0) {
-          await send(`Грешка при Notion: ${result.stderr || result.stdout}`.trim());
-          return { handled: true };
-        }
-        await send(result.stdout || "Записах задачата в Notion.");
+        await send(`Грешка при Notion: ${result.stderr || result.stdout}`.trim());
         return { handled: true };
       }
-      entry.pending = { type: "note-due", title: pending.title, targetKey, origin: pending.origin };
+      // Create Telegram reminder
+      const isAbsolute = reminderWhen.includes(":") && reminderWhen.length > 5;
+      const reminderArgs = [
+        "--mode", "add",
+        "--text", `Напомняне: ${pending.title}`,
+        isAbsolute ? "--at" : "--in",
+        reminderWhen,
+        "--group", "tasks",
+      ];
+      runNodeScript(REMINDERS_SCRIPT, reminderArgs);
+      entry.pending = null;
       state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
       saveState(state);
-      await send("Моля, дай краен срок (напр. 06.01.2026 12:00).");
+      await send(`Записах задачата в Notion и създадох напомняне. ✅`);
       return { handled: true };
     }
 
@@ -645,7 +750,7 @@ export async function handleTelegramScriptOnlyMessage(params: {
         saveState(state);
         return { handled: true };
       }
-      await send("Моля, дай време (напр. 10 мин или 18:30)." );
+      await send("Моля, дай време (напр. 10 мин или 18:30).");
       return { handled: true };
     }
   }
