@@ -595,8 +595,13 @@ export async function handleTelegramScriptOnlyMessage(params: {
         isAbsolute ? "--at" : "--in",
         reminderWhen,
         "--group", "tasks",
+        "--target", chatKey,
       ];
-      runNodeScript(REMINDERS_SCRIPT, reminderArgs);
+      const remResult = runNodeScript(REMINDERS_SCRIPT, reminderArgs);
+      if (remResult.status !== 0) {
+        // Log error but don't fail the whole flow since Notion is already saved
+        await send(`Записах в Notion, но грешка при напомняне: ${remResult.stderr}`);
+      }
       entry.pending = null;
       state.telegram = { ...(state.telegram || {}), [chatKey]: entry };
       saveState(state);
@@ -788,8 +793,12 @@ export async function handleTelegramScriptOnlyMessage(params: {
       await send("Какво да ти напомня?");
       return { handled: true };
     }
-    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", rel.text, "--in", rel.when, "--group", "tasks"]);
-    await send(result.stdout || "Напомнянето е създадено (без отговор).");
+    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", rel.text, "--in", rel.when, "--group", "tasks", "--target", chatKey]);
+    if (result.status !== 0) {
+      await send(`Грешка при създаване на напомняне: ${result.stderr}`.trim());
+    } else {
+      await send(result.stdout || `Напомнянето е създадено за след ${rel.when}.`);
+    }
     return { handled: true };
   }
 
@@ -802,8 +811,12 @@ export async function handleTelegramScriptOnlyMessage(params: {
       await send("Какво да ти напомня?");
       return { handled: true };
     }
-    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", abs.text, "--at", abs.when, "--group", "tasks"]);
-    await send(result.stdout || "Напомнянето е създадено (без отговор).");
+    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", abs.text, "--at", abs.when, "--group", "tasks", "--target", chatKey]);
+    if (result.status !== 0) {
+      await send(`Грешка при създаване на напомняне: ${result.stderr}`.trim());
+    } else {
+      await send(result.stdout || `Напомнянето е създадено за ${abs.when}.`);
+    }
     return { handled: true };
   }
 
@@ -818,7 +831,7 @@ export async function handleTelegramScriptOnlyMessage(params: {
   const planTomorrowMatch = text.match(/утре\s+сутрин/i);
   if (planTomorrowMatch) {
     const when = formatTomorrowAt(9, 0);
-    runNodeScript(REMINDERS_SCRIPT, ["--mode", "done", "--group", "daily-plan"]);
+    runNodeScript(REMINDERS_SCRIPT, ["--mode", "done", "--group", "daily-plan", "--target", chatKey]);
     runNodeScript(REMINDERS_SCRIPT, [
       "--mode",
       "add",
@@ -830,6 +843,8 @@ export async function handleTelegramScriptOnlyMessage(params: {
       "10",
       "--group",
       "daily-plan",
+      "--target",
+      chatKey,
     ]);
     const date = when.slice(0, 10);
     entry.pending = { type: "daily-plan", date };
