@@ -229,7 +229,10 @@ function parseReminderRelative(text: string) {
   if (!match) return null;
   const value = Number(match[1]);
   const unit = normalize(match[2]);
-  const remainder = (match[3] || "").trim();
+  let remainder = (match[3] || "").trim();
+  // Strip starting punctuation like "." or "," or ":" often used after time unit
+  remainder = remainder.replace(/^[\.,:;]\s*/, "");
+
   if (!Number.isFinite(value) || value <= 0) return null;
   let suffix = "m";
   if (unit.startsWith("ч") || unit.startsWith("h") || unit.startsWith("hour")) suffix = "h";
@@ -785,7 +788,8 @@ export async function handleTelegramScriptOnlyMessage(params: {
       await send("Какво да ти напомня?");
       return { handled: true };
     }
-    runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", rel.text, "--in", rel.when, "--group", "tasks"]);
+    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", rel.text, "--in", rel.when, "--group", "tasks"]);
+    await send(result.stdout || "Напомнянето е създадено (без отговор).");
     return { handled: true };
   }
 
@@ -798,7 +802,8 @@ export async function handleTelegramScriptOnlyMessage(params: {
       await send("Какво да ти напомня?");
       return { handled: true };
     }
-    runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", abs.text, "--at", abs.when, "--group", "tasks"]);
+    const result = runNodeScript(REMINDERS_SCRIPT, ["--mode", "add", "--text", abs.text, "--at", abs.when, "--group", "tasks"]);
+    await send(result.stdout || "Напомнянето е създадено (без отговор).");
     return { handled: true };
   }
 
